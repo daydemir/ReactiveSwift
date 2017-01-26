@@ -853,11 +853,15 @@ class PropertySpec: QuickSpec {
 					let initialValue = (character: "🎃", other: 42)
 					let tupleProperty = MutableProperty<(character: String, other: Int)>(initialValue)
 
-					let testScheduler = TestScheduler()
+					let labelKey = DispatchSpecificKey<String>()
+					let testQueue = DispatchQueue(label: "test queue", target: .main)
+					testQueue.setSpecific(key: labelKey, value: "test queue")
+					testQueue.suspend()
+					let testScheduler = QueueScheduler(internalQueue: testQueue)
 
-					var getterEvaluated = false
+					var isOnTestQueue = false
 					let theLens = tupleProperty.lens(on: testScheduler) { (tuple: (character: String, other: Int)) -> String in
-						getterEvaluated = true
+						isOnTestQueue = DispatchQueue.getSpecific(key: labelKey) == "test queue"
 						return tuple.character
 					}
 
@@ -866,14 +870,10 @@ class PropertySpec: QuickSpec {
 						characters.append(character)
 					}
 
-					expect(getterEvaluated).to(beFalse())
-					expect(characters).to(beEmpty())
+					testQueue.resume()
 
-					testScheduler.run()
-
-					expect(getterEvaluated) == true
-					expect(characters).toNot(beEmpty())
-					expect(characters) == ["🎃"]
+					expect(isOnTestQueue).toEventually(beTrue())
+					expect(characters).toEventually(equal(["🎃"]))
 				}
 			}
 
